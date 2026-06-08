@@ -9,7 +9,7 @@ Built with Python, Typer, Rich, and plotext.
 Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/sndtaylor/stim.git
+git clone https://github.com/SonnyTaylor/stim.git
 cd stim
 uv tool install .
 ```

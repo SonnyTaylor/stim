@@ -646,7 +646,9 @@ Shows estimated armodafinil concentration as % of peak, with a 24h sparkline tre
 
 [bold cyan]Examples:[/bold cyan]
   stim blood                   Current level + sparkline
-  stim blood --graph           Full 48h concentration curve
+  stim blood --graph           Full concentration curve (24h back, 24h forward)
+  stim blood -g --back 48      Show 48h into the past
+  stim blood -g --forward 48   Show 48h into the future
   stim blood --table           Hour-by-hour breakdown (next 24h)
   stim blood --table -d 48     Hour-by-hour for next 48 hours
 """
@@ -657,6 +659,8 @@ def blood(
     graph: bool = typer.Option(False, "--graph", "-g", help="Show full concentration curve."),
     table: bool = typer.Option(False, "--table", "-t", help="Show hour-by-hour breakdown."),
     duration: int = typer.Option(24, "--duration", "-d", help="Hours to show in table (default: 24)."),
+    hours_back: int = typer.Option(24, "--back", help="Hours to show before now in graph (default: 24)."),
+    hours_forward: int = typer.Option(24, "--forward", help="Hours to show after now in graph (default: 24)."),
 ) -> None:
     """Show current estimated blood concentration."""
     doses = get_doses()
@@ -699,7 +703,7 @@ def blood(
 
     if graph:
         console.print("[bold]📈 Blood Concentration Curve[/bold]")
-        draw_blood_graph(doses, cfg, streak=streak)
+        draw_blood_graph(doses, cfg, hours_back=hours_back, hours_forward=hours_forward, streak=streak)
         console.print()
 
     style = color_for_level(level, cfg)

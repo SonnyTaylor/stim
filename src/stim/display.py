@@ -175,7 +175,7 @@ def cyp3a4_warning(streak: int) -> Optional[str]:
     return None
 
 
-def draw_blood_graph(doses, cfg: Config, hours_back: float = 48, hours_forward: float = 12, streak: int = 0):
+def draw_blood_graph(doses, cfg: Config, hours_back: float = 24, hours_forward: float = 24, streak: int = 0):
     """Draw concentration curve in terminal using plotext."""
     from stim.pharmaco import curve_points, cmax
 

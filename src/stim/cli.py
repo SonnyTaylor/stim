@@ -27,10 +27,28 @@ from stim.display import (
     metabolite_warning, cyp3a4_warning,
 )
 
+HELP_TEXT = """[bold]stim[/bold] — armodafinil usage tracker
+
+[dim]Log doses, check blood levels, and stay safe.[/dim]
+
+[bold cyan]Quick start:[/bold cyan]
+  stim log 150mg              Log a dose right now
+  stim log 75mg 08:30         Log with a specific time
+  stim today                  See today's summary
+  stim blood                  Current blood level estimate
+  stim status                 Full safety snapshot
+
+[bold cyan]Learn more:[/bold cyan]
+  stim log --help             See all logging options
+  stim calc --help            Calculator modes
+  stim config                 View/change settings
+"""
+
 app = typer.Typer(
     name="stim",
-    help="Armodafinil usage tracker — logging, blood levels, and safety tools.",
+    help=HELP_TEXT,
     add_completion=False,
+    rich_markup_mode="rich",
 )
 cfg: Config
 
@@ -41,8 +59,9 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(
         False, "--version", "-v", callback=version_callback, is_eager=True,
         help="Show version and exit.",
@@ -52,6 +71,8 @@ def main(
     global cfg
     init_db()
     cfg = ensure_config()
+    if ctx.invoked_subcommand is None:
+        console.print(HELP_TEXT)
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────
@@ -180,7 +201,22 @@ def check_late_dose() -> None:
 
 # ─── Commands: Logging ─────────────────────────────────────────────────
 
-@app.command()
+LOG_HELP = """[bold]Log a dose.[/bold]
+
+[bold cyan]Examples:[/bold cyan]
+  stim log 150mg                    Log 150mg right now
+  stim log 75mg 08:30               Log 75mg at 8:30am today
+  stim log 150mg yesterday          Log for yesterday at current time
+  stim log 150mg "yesterday 07:00"  Log for yesterday at 7am
+  stim log 150mg --fed              Log with food (delays absorption ~2.5h)
+  stim log 150mg --note "tired"     Log with a note
+  stim log 75mg --fed -n "late"     Combine flags
+
+[dim]Time accepts: "08:30", "yesterday", "yesterday 07:00", or full ISO dates.[/dim]
+"""
+
+
+@app.command(help=LOG_HELP)
 def log(
     amount: str = typer.Argument(..., help="Dose amount, e.g. '150mg' or '150'."),
     time: Optional[str] = typer.Argument(None, help="Time: '08:30', 'yesterday', 'yesterday 07:00'."),
@@ -215,7 +251,7 @@ def log(
     check_sleep_warning(dose_mg, taken_at, fed=fed)
 
 
-@app.command(name="off")
+@app.command(name="off", help="Mark today as an intentional off day. Resets streak counting.")
 def off_day(
     time: Optional[str] = typer.Argument(None, help="Date, e.g. 'yesterday'. Defaults to today."),
 ) -> None:
@@ -237,7 +273,7 @@ def off_day(
     console.print(f"[green]✓[/green] Marked [bold]{date_str}[/bold] as off day.")
 
 
-@app.command()
+@app.command(help="Remove the most recent dose entry (with confirmation).")
 def undo() -> None:
     """Remove the most recent dose entry."""
     with get_connection() as conn:
@@ -266,7 +302,16 @@ def undo() -> None:
 
 # ─── Commands: Viewing ──────────────────────────────────────────────────
 
-@app.command()
+TODAY_HELP = """[bold]Today's summary.[/bold]
+
+Shows doses logged today, current blood level estimate, and streak info.
+
+[bold cyan]Example:[/bold cyan]
+  stim today
+"""
+
+
+@app.command(help=TODAY_HELP)
 def today() -> None:
     """Show today's summary."""
     rows = get_today_doses()
@@ -294,7 +339,6 @@ def today() -> None:
     lines.append(f"Blood level: [{style}]{bar} {level:.1f}%[/{style}] of peak")
     lines.append(f"Streak: {streak_display(streak, cfg)}")
 
-    # Warnings
     mw = metabolite_warning(streak)
     if mw:
         lines.append("")
@@ -304,7 +348,16 @@ def today() -> None:
     console.print(panel)
 
 
-@app.command()
+HISTORY_HELP = """[bold]View dose history.[/bold]
+
+[bold cyan]Examples:[/bold cyan]
+  stim history                  All doses
+  stim history --days 14        Last 14 days only
+  stim history --days 7         Last week
+"""
+
+
+@app.command(help=HISTORY_HELP)
 def history(
     days: Optional[int] = typer.Option(None, "--days", "-d", help="Limit to last N days."),
 ) -> None:
@@ -348,7 +401,16 @@ def history(
     console.print(table)
 
 
-@app.command()
+STATUS_HELP = """[bold]Safety snapshot.[/bold]
+
+Shows streak, weekly intake, blood level estimate, and any safety warnings.
+
+[bold cyan]Examples:[/bold cyan]
+  stim status
+"""
+
+
+@app.command(help=STATUS_HELP)
 def status() -> None:
     """Safety snapshot with streak, weekly summary, and blood level."""
     doses = get_doses()
@@ -382,18 +444,15 @@ def status() -> None:
     bar = level_bar(level)
     lines.append(f"Blood level: [{level_style}]{bar} {level:.1f}%[/{level_style}] of peak")
 
-    # Show accumulation info
     if streak >= 4:
         mult = steady_state_multiplier(streak, cfg.steady_state_correction)
         if mult > 1.0:
             lines.append(f"  [dim]Adjusted ×{mult:.1f} for steady-state accumulation (day {streak})[/dim]")
 
-    # Show weight info
     if cfg.body_weight_kg:
         wcf = weight_correction_factor(cfg.body_weight_kg)
         lines.append(f"  [dim]Weight-adjusted for {cfg.body_weight_kg:.0f}kg (factor {wcf:.3f})[/dim]")
 
-    # Sleep estimate
     parts = cfg.sleep_time.split(":")
     sleep_hour, sleep_min = int(parts[0]), int(parts[1])
     local_now = datetime.now().astimezone()
@@ -408,9 +467,8 @@ def status() -> None:
         lines.append(f"Est. at {cfg.sleep_time}: [{sleep_style}]{sleep_level:.1f}%[/{sleep_style}] of peak")
     lines.append("")
 
-    lines.append(f"[dim]Half-life: {cfg.half_life_hours}h | Sleep sensitivity: {cfg.sleep_sensitivity} | Threshold: {cfg.sleep_threshold*100:.0f}%[/dim]")
+    lines.append(f"[dim]Half-life: {cfg.half_life_hours}h | Sensitivity: {cfg.sleep_sensitivity} | Threshold: {cfg.sleep_threshold*100:.0f}%[/dim]")
 
-    # Warnings
     mw = metabolite_warning(streak)
     cw = cyp3a4_warning(streak)
     if mw or cw:
@@ -427,7 +485,18 @@ def status() -> None:
 
 # ─── Commands: Stats & Graphs ───────────────────────────────────────────
 
-@app.command()
+STATS_HELP = """[bold]Usage stats with graphs.[/bold]
+
+Shows dose frequency by day, time-of-day distribution, and an on/off calendar grid.
+
+[bold cyan]Examples:[/bold cyan]
+  stim stats                   Last 30 days (default)
+  stim stats --week            This week only
+  stim stats --month           Last 30 days
+"""
+
+
+@app.command(help=STATS_HELP)
 def stats(
     week: bool = typer.Option(False, "--week", "-w", help="This week only."),
     month: bool = typer.Option(False, "--month", "-m", help="Last 30 days."),
@@ -456,16 +525,16 @@ def stats(
         all_counts.append(date_counts.get(ds, 0))
         current += timedelta(days=1)
 
-    console.print("[bold]Dose Frequency[/bold]")
+    console.print("[bold]📊 Dose Frequency[/bold]")
     draw_dose_frequency(all_dates, all_counts, f"Dose Frequency (last {days} days)")
     console.print()
 
     hours = [d.taken_at.astimezone().hour for d in doses_raw]
-    console.print("[bold]Time of Day Distribution[/bold]")
+    console.print("[bold]🕐 Time of Day[/bold]")
     draw_time_distribution(hours)
     console.print()
 
-    console.print("[bold]On/Off Days[/bold]")
+    console.print("[bold]📅 On/Off Days[/bold]")
     on_days: dict[str, bool] = {}
     with get_connection() as conn:
         all_entries = conn.execute(
@@ -489,7 +558,7 @@ def stats(
     avg_per_day = len(doses_raw) / max(days_with_doses, 1)
     fed_count = sum(1 for d in doses_raw if d.fed)
 
-    console.print(f"[bold]Summary (last {days} days)[/bold]")
+    console.print(f"[bold]📈 Summary (last {days} days)[/bold]")
     console.print(f"  Total doses: [cyan]{len(doses_raw)}[/cyan]")
     console.print(f"  Total intake: [cyan]{total_mg:.0f}mg[/cyan]")
     console.print(f"  Average dose: [cyan]{avg_dose:.0f}mg[/cyan]")
@@ -501,7 +570,17 @@ def stats(
 
 # ─── Commands: Blood Level ─────────────────────────────────────────────
 
-@app.command()
+BLOOD_HELP = """[bold]Current blood level estimate.[/bold]
+
+Shows estimated armodafinil concentration as % of peak, with a 24h sparkline trend.
+
+[bold cyan]Examples:[/bold cyan]
+  stim blood                   Current level + sparkline
+  stim blood --graph           Full 48h concentration curve
+"""
+
+
+@app.command(help=BLOOD_HELP)
 def blood(
     graph: bool = typer.Option(False, "--graph", "-g", help="Show full concentration curve."),
 ) -> None:
@@ -511,6 +590,7 @@ def blood(
     level = current_level(doses, cfg, streak=streak)
 
     if graph:
+        console.print("[bold]📈 Blood Concentration Curve[/bold]")
         draw_blood_graph(doses, cfg, streak=streak)
         console.print()
 
@@ -535,7 +615,6 @@ def blood(
         fed_str = " (fed)" if last.fed else ""
         lines.append(f"Last dose: [cyan]{last.amount_mg:.0f}mg[/cyan] at {last_local}{fed_str}")
 
-    # Accumulation note
     if streak >= 4:
         mult = steady_state_multiplier(streak, cfg.steady_state_correction)
         if mult > 1.0:
@@ -544,11 +623,9 @@ def blood(
             lines.append(f"[dim]Adjusted ×{mult:.1f} for steady-state accumulation (day {streak}).[/dim]")
             lines.append(f"[dim]Raw single-dose model would show {raw_level:.1f}%.[/dim]")
 
-    # Weight note
     if cfg.body_weight_kg:
         lines.append(f"[dim]Level adjusted for body weight ({cfg.body_weight_kg:.0f}kg).[/dim]")
 
-    # Metabolite warning
     mw = metabolite_warning(streak)
     if mw:
         lines.append("")
@@ -560,7 +637,28 @@ def blood(
 
 # ─── Commands: Calculators ─────────────────────────────────────────────
 
-@app.command(name="calc")
+CALC_HELP = """[bold]Pharmacokinetic calculators.[/bold]
+
+[bold cyan]Modes:[/bold cyan]
+
+  [green]sleep[/green]   Can I sleep at a given time?
+         stim calc sleep 22:00
+         stim calc sleep 23:45
+
+  [green]dose[/green]    When should I dose if I wake at a certain time?
+         stim calc dose 06:00
+         stim calc dose 07:30
+
+  [green]clear[/green]   When will my level drop below 10% of peak?
+         stim calc clear
+
+  [green]stack[/green]   What if I take another dose right now?
+         stim calc stack 75mg
+         stim calc stack 75mg 14:00
+"""
+
+
+@app.command(name="calc", help=CALC_HELP)
 def calc_sleep(
     mode: str = typer.Argument(..., help="Calculator mode: sleep, dose, clear, stack."),
     target: str = typer.Argument(..., help="Target time or dose amount."),
@@ -583,7 +681,7 @@ def calc_sleep(
         level_at_sleep = level_at_time(sleep_utc, doses, cfg, streak=streak)
         style = color_for_level(level_at_sleep, cfg)
 
-        console.print(f"[bold]Sleep Calculator[/bold]")
+        console.print(f"[bold]😴 Sleep Calculator[/bold]")
         console.print(f"  Target sleep: {sleep_target.strftime('%H:%M')}")
         console.print(f"  Est. level:   [{style}]{level_at_sleep:.1f}%[/{style}] of peak")
         console.print(f"  Threshold:    {cfg.sleep_threshold*100:.0f}% ({cfg.sleep_sensitivity})")
@@ -611,7 +709,7 @@ def calc_sleep(
         if sleep_time <= wake_time:
             sleep_time += timedelta(days=1)
 
-        console.print(f"[bold]Dose Timing Calculator[/bold]")
+        console.print(f"[bold]⏰ Dose Timing Calculator[/bold]")
         console.print(f"  Wake time:     {wake_time.strftime('%H:%M')}")
         console.print(f"  Sleep target:  {sleep_time.strftime('%H:%M')}")
         console.print(f"  Default dose:  {cfg.default_dose_mg:.0f}mg")
@@ -645,7 +743,7 @@ def calc_sleep(
         doses = get_doses()
         clear_time = clearance_time(doses, 10.0, cfg, now, streak=streak)
 
-        console.print("[bold]Clearance Calculator[/bold]")
+        console.print("[bold]🧹 Clearance Calculator[/bold]")
         level = current_level(doses, cfg, streak=streak)
         console.print(f"  Current level: {level:.1f}% of peak")
 
@@ -670,7 +768,7 @@ def calc_sleep(
         doses = get_doses()
         hypothetical = doses + [DoseEvent(amount_mg=stack_mg, taken_at=stack_time, fed=stack_fed)]
 
-        console.print(f"[bold]Stack Calculator[/bold]")
+        console.print(f"[bold]📚 Stack Calculator[/bold]")
         local_stack = stack_time.astimezone().strftime("%H:%M")
         fed_str = " [dim](fed)[/dim]" if stack_fed else ""
         console.print(f"  Adding: [cyan]{stack_mg:.0f}mg[/cyan] at {local_stack}{fed_str}")
@@ -706,6 +804,7 @@ def calc_sleep(
     else:
         console.print(f"[red]Unknown calculator mode: {mode}[/red]")
         console.print("Available modes: sleep, dose, clear, stack")
+        console.print("Try: stim calc sleep 22:00")
 
 
 # ─── Commands: Config ─────────────────────────────────────────────────────
@@ -723,8 +822,24 @@ CONFIG_FIELDS = {
     "steady_state": "steady_state_correction",
 }
 
+CONFIG_HELP = """[bold]View or change configuration.[/bold]
 
-@app.command(name="config")
+[bold cyan]Examples:[/bold cyan]
+  stim config                      Show all settings
+  stim config sleep_time           View one setting
+  stim config sleep_time 23:45     Update sleep time
+  stim config sensitivity high     Set sleep threshold sensitivity
+  stim config body_weight 88       Set body weight (kg)
+  stim config body_weight none     Remove weight correction
+  stim config steady_state off     Disable accumulation correction
+
+[bold cyan]Available keys:[/bold cyan]
+  default_dose, half_life, tmax, sleep_time, sensitivity,
+  late_cutoff, streak_warn, streak_alert, body_weight, steady_state
+"""
+
+
+@app.command(name="config", help=CONFIG_HELP)
 def config_cmd(
     key: Optional[str] = typer.Argument(None, help="Config key to set (e.g. sleep_time)."),
     value: Optional[str] = typer.Argument(None, help="New value."),

@@ -39,6 +39,7 @@ stim/
 ├── pyproject.toml            # Project metadata, dependencies, entry point
 ├── uv.lock                   # Locked dependencies
 ├── AGENTS.md                 # This file
+├── README.md                 # User-facing documentation
 ├── skills/
 │   └── stim/
 │       └── SKILL.md          # AI agent skill for stim
@@ -95,12 +96,15 @@ This symlinks to `~/.agents/skills/stim/` and `~/.pi/agent/skills/stim/`.
 | `stim today` | Today's summary: doses, blood level, streak |
 | `stim history` | Full dose history table |
 | `stim history --days 30` | Last 30 days only |
+| `stim history --graph` | Dose amounts over time as bar chart |
 | `stim status` | Safety snapshot: streak, weekly summary, level, warnings |
-| `stim blood` | Current estimated blood concentration |
-| `stim blood --graph` | Full 48h concentration curve |
+| `stim blood` | Current estimated blood concentration + sparkline |
+| `stim blood --graph` | Concentration curve (24h past, 24h future) |
+| `stim blood -g --forward 48` | Show 48h into the future |
+| `stim blood --table` | Hour-by-hour breakdown with visual bars |
+| `stim blood --table -d 48` | Hour-by-hour for next 48 hours |
 | `stim stats` | Frequency + time distribution + calendar grid |
 | `stim stats --week` | This week only |
-| `stim stats --month` | Last 30 days |
 
 ### Calculators
 
@@ -212,11 +216,15 @@ factor = (70 / weight_kg) ** 0.47
 
 7. **All datetime storage is UTC.** Local time conversion happens only at display time via `datetime.astimezone()`.
 
-8. **The sparkline in `stim blood` is modelled, not measured.** It shows the last 24 hours of the theoretical PK curve based on logged doses.
+8. **`stim today` uses local time boundaries.** Your "today" starts at midnight your time, not UTC midnight.
 
-9. **ka is back-calculated from Tmax, not from population PK.** The population PK model (Willavize 2017) gives ka=3.07 but with a Tlag. We use ka≈1.2 which implicitly absorbs the lag time and correctly produces Tmax=2h.
+9. **Times display in 12-hour AM/PM format.** "8:15 AM", "12:30 PM" — not 24-hour.
 
-10. **Windows encoding.** The CLI forces UTF-8 output to handle Unicode characters (checkmarks, blocks) on Windows cp1252 terminals.
+10. **ka is back-calculated from Tmax, not from population PK.** The population PK model (Willavize 2017) gives ka=3.07 but with a Tlag. We use ka≈1.2 which implicitly absorbs the lag time and correctly produces Tmax=2h.
+
+11. **Windows encoding.** The CLI forces UTF-8 output to handle Unicode characters (checkmarks, blocks) on Windows cp1252 terminals.
+
+12. **Graph time ranges.** `stim blood --graph` defaults to 24h back, 24h forward. Use `--back` and `--forward` to customise. `stim blood --table` defaults to 24h forward, customise with `-d`.
 
 ## Database
 

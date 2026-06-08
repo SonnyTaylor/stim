@@ -32,9 +32,13 @@ stim undo                          # remove most recent entry
 stim today                         # today's summary
 stim history                       # all doses table
 stim history --days 30             # last 30 days
+stim history --graph               # dose chart over time
 stim status                        # safety snapshot (streak, level, warnings)
 stim blood                         # current blood level estimate
-stim blood --graph                 # full 48h concentration curve
+stim blood --graph                 # concentration curve (24h past, 24h future)
+stim blood -g --forward 48         # show 48h into the future
+stim blood --table                 # hour-by-hour breakdown
+stim blood --table -d 48           # hour-by-hour for next 48h
 stim stats                         # frequency + time distribution graphs
 stim stats --week                  # this week only
 
@@ -109,7 +113,7 @@ calculations — a fed dose at 08:00 peaks around 12:30 instead of 10:00.
 - **Green**: safe, within normal range
 - **Yellow**: caution (streak 3+ days, or level between 15% and sleep threshold)
 - **Red**: alert (streak 5+ days, or level above sleep threshold)
-- All times displayed in local time; stored as UTC ISO 8601
+- All times displayed in 12-hour AM/PM format in local time; stored as UTC ISO 8601
 - Dose amounts always with "mg" suffix
 
 ## Config fields
@@ -132,7 +136,7 @@ calculations — a fed dose at 08:00 peaks around 12:30 instead of 10:00.
 The CLI automatically shows:
 
 1. **Sleep impact warning** when logging a dose that will leave levels above threshold at bedtime
-2. **Late dose warning** when logging after the configured cutoff (default 13:00)
+2. **Late dose warning** when logging after the configured cutoff (default 1:00 PM)
 3. **Streak warning** (yellow) at 3+ consecutive days, **alert** (red) at 5+
 4. **Metabolite note** at streak 5+ — modafinil sulfone accumulates 7.8× and isn't modelled
 5. **CYP3A4 note** at streak 7+ — drug interaction disclaimer
@@ -147,6 +151,8 @@ The CLI automatically shows:
 - The sparkline in `stim blood` shows the last 24 hours of the **modelled curve**, not actual measurements.
 - Config changes take effect immediately — no restart needed. The config is re-read on every command.
 - All datetime arithmetic uses UTC internally. Local time conversion happens only at display time.
+- `stim today` uses local time boundaries, not UTC midnight. Your "today" starts at midnight your time.
+- Times display in 12-hour AM/PM format (e.g. "8:15 AM", "12:30 PM").
 
 ## Database
 

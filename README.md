@@ -35,6 +35,7 @@ stim blood
 # See history
 stim history
 stim history --days 14
+stim history --graph         # dose chart over time
 
 # Mark an off day
 stim off
@@ -51,11 +52,21 @@ stim off
 - **Body weight correction** — optional, based on Willavize 2017 population PK
 
 ```bash
-# Current blood level
+# Current blood level with 24h sparkline
 stim blood
 
-# Full 48h concentration curve
+# Concentration curve (24h past, 24h future)
 stim blood --graph
+
+# Show more/fewer hours
+stim blood -g --back 48           # 48h into the past
+stim blood -g --forward 48        # 48h into the future
+
+# Hour-by-hour breakdown with visual bars
+stim blood --table
+
+# Hour-by-hour for next 48 hours
+stim blood --table -d 48
 ```
 
 ## Sleep safety
@@ -91,6 +102,10 @@ stim stats
 
 # This week only
 stim stats --week
+
+# Dose history as bar chart
+stim history --graph
+stim history --graph --days 30
 ```
 
 ## Safety tracking

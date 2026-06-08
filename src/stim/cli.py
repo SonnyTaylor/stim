@@ -647,17 +647,55 @@ Shows estimated armodafinil concentration as % of peak, with a 24h sparkline tre
 [bold cyan]Examples:[/bold cyan]
   stim blood                   Current level + sparkline
   stim blood --graph           Full 48h concentration curve
+  stim blood --table           Hour-by-hour breakdown (next 24h)
+  stim blood --table -d 48     Hour-by-hour for next 48 hours
 """
 
 
 @app.command(help=BLOOD_HELP)
 def blood(
     graph: bool = typer.Option(False, "--graph", "-g", help="Show full concentration curve."),
+    table: bool = typer.Option(False, "--table", "-t", help="Show hour-by-hour breakdown."),
+    duration: int = typer.Option(24, "--duration", "-d", help="Hours to show in table (default: 24)."),
 ) -> None:
     """Show current estimated blood concentration."""
     doses = get_doses()
     streak = compute_streak()
     level = current_level(doses, cfg, streak=streak)
+
+    if table:
+        # Hour-by-hour table
+        now = datetime.now(timezone.utc)
+        local_now = datetime.now().astimezone()
+
+        t = Table(title=f"Blood Level — Next {duration}h", box=box.ROUNDED)
+        t.add_column("Time", style="cyan")
+        t.add_column("Hours", style="dim", justify="right")
+        t.add_column("Level", style="green", justify="right")
+        t.add_column("", style="green")  # bar
+
+        for h in range(0, duration + 1):
+            conc = combined_concentration_at(h, doses, cfg, now, streak=streak)
+            future_time = (local_now + timedelta(hours=h)).strftime(_TIME_FMT)
+            bar = level_bar(conc, width=20)
+            style = color_for_level(conc, cfg)
+
+            if h == 0:
+                label = "[bold]now[/bold]"
+            elif h == 1:
+                label = "1h"
+            else:
+                label = f"{h}h"
+
+            t.add_row(
+                future_time,
+                label,
+                f"[{style}]{conc:.1f}%[/{style}]",
+                f"[{style}]{bar}[/{style}]",
+            )
+
+        console.print(t)
+        return
 
     if graph:
         console.print("[bold]📈 Blood Concentration Curve[/bold]")

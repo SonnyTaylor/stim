@@ -194,10 +194,10 @@ def draw_blood_graph(doses, cfg: Config, hours_back: float = 48, hours_forward: 
 
     # Sleep threshold line
     threshold = cfg.sleep_threshold * 100
-    plt.horizontal_line(threshold, label=f"Sleep threshold ({threshold:.0f}%)", color="red")
+    plt.horizontal_line(threshold, color="red")
 
     # Current time marker
-    plt.vertical_line(0, label="Now", color="yellow")
+    plt.vertical_line(0, color="yellow")
 
     # X-axis labels
     xticks = [h for h in xs if abs(h) % 6 < 0.5]

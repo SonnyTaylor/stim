@@ -127,9 +127,9 @@ class TestTimeFormatting:
     def test_format_local_time(self):
         utc_str = "2026-06-09T12:00:00Z"
         result = format_local_time(utc_str)
-        # Result depends on local timezone, just check format
+        # Result depends on local timezone, just check it has time format
         assert ":" in result
-        assert len(result) == 5  # HH:MM
+        assert "M" in result  # AM or PM
 
     def test_format_local_datetime(self):
         utc_str = "2026-06-09T12:00:00Z"

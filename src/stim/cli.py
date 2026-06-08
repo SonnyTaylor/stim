@@ -24,7 +24,7 @@ from stim.display import (
     format_local_time, format_local_datetime, parse_time_input, parse_mg,
     streak_display, draw_blood_graph, draw_dose_frequency,
     draw_time_distribution, draw_calendar_grid,
-    metabolite_warning, cyp3a4_warning,
+    metabolite_warning, cyp3a4_warning, _TIME_FMT,
 )
 
 HELP_TEXT = """[bold]stim[/bold] — armodafinil usage tracker
@@ -241,7 +241,7 @@ def log(
             (dose_mg, taken_at_str, note, int(fed)),
         )
 
-    local_time = taken_at.astimezone().strftime("%H:%M")
+    local_time = taken_at.astimezone().strftime(_TIME_FMT)
     date_str = taken_at.astimezone().strftime("%Y-%m-%d")
     fed_str = " [dim](fed)[/dim]" if fed else ""
 
@@ -459,7 +459,7 @@ def history(
     for r in rows:
         local_dt = datetime.fromisoformat(r["taken_at"].replace("Z", "+00:00")).astimezone()
         date_str = local_dt.strftime("%Y-%m-%d")
-        time_str = local_dt.strftime("%H:%M")
+        time_str = local_dt.strftime(_TIME_FMT)
         if r["is_off_day"]:
             dose_str = "[dim]off day[/dim]"
         else:
@@ -681,7 +681,7 @@ def blood(
 
     if doses:
         last = doses[-1]
-        last_local = last.taken_at.astimezone().strftime("%H:%M")
+        last_local = last.taken_at.astimezone().strftime(_TIME_FMT)
         fed_str = " (fed)" if last.fed else ""
         lines.append(f"Last dose: [cyan]{last.amount_mg:.0f}mg[/cyan] at {last_local}{fed_str}")
 
@@ -759,7 +759,7 @@ def calc_sleep(
         if level_at_sleep > cfg.sleep_threshold * 100:
             safe_time = time_to_threshold(doses, cfg.sleep_threshold * 100, cfg, now, streak=streak)
             if safe_time:
-                safe_local = safe_time.astimezone().strftime("%H:%M")
+                safe_local = safe_time.astimezone().strftime(_TIME_FMT)
                 console.print(f"  [yellow]⚠ Not safe. Level drops below threshold around {safe_local}.[/yellow]")
             else:
                 console.print(f"  [red]⚠ Not safe. Unable to determine safe time.[/red]")
@@ -839,7 +839,7 @@ def calc_sleep(
         hypothetical = doses + [DoseEvent(amount_mg=stack_mg, taken_at=stack_time, fed=stack_fed)]
 
         console.print(f"[bold]📚 Stack Calculator[/bold]")
-        local_stack = stack_time.astimezone().strftime("%H:%M")
+        local_stack = stack_time.astimezone().strftime(_TIME_FMT)
         fed_str = " [dim](fed)[/dim]" if stack_fed else ""
         console.print(f"  Adding: [cyan]{stack_mg:.0f}mg[/cyan] at {local_stack}{fed_str}")
         console.print()

@@ -68,14 +68,20 @@ def sparkline(values: list[float], width: int = 20) -> str:
     return "".join(blocks[min(int((v - mn) / rng * 8), 8)] for v in sampled)
 
 
-def format_local_time(utc_str: str, fmt: str = "%H:%M") -> str:
+# Platform-specific 12-hour format (no leading zero)
+import sys as _sys
+_TIME_FMT = "%#I:%M %p" if _sys.platform == "win32" else "%-I:%M %p"
+_DATETIME_FMT = "%Y-%m-%d %#I:%M %p" if _sys.platform == "win32" else "%Y-%m-%d %-I:%M %p"
+
+
+def format_local_time(utc_str: str, fmt: str = _TIME_FMT) -> str:
     """Convert UTC ISO string to local time display."""
     dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
     local = dt.astimezone()
     return local.strftime(fmt)
 
 
-def format_local_datetime(utc_str: str, fmt: str = "%Y-%m-%d %H:%M") -> str:
+def format_local_datetime(utc_str: str, fmt: str = _DATETIME_FMT) -> str:
     """Convert UTC ISO string to local datetime display."""
     dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
     local = dt.astimezone()

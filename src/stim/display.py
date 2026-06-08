@@ -103,13 +103,17 @@ def parse_time_input(time_str: str, reference: datetime = None) -> datetime:
         parsed_time = dp.parse(time_part, default=yesterday)
         return parsed_time.replace(tzinfo=timezone.utc)
 
-    # Try parsing as time only
+    # Try parsing as full date or time only
     try:
         parsed = dp.parse(time_str)
         if parsed.tzinfo is None:
-            # Assume today in local time, convert to UTC
-            local_now = datetime.now().astimezone()
-            parsed = parsed.replace(year=local_now.year, month=local_now.month, day=local_now.day)
+            # Check if input contains a date (year-month-day pattern)
+            import re
+            has_date = bool(re.search(r'\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4}', time_str))
+            if not has_date:
+                # Only time provided — assume today in local time
+                local_now = datetime.now().astimezone()
+                parsed = parsed.replace(year=local_now.year, month=local_now.month, day=local_now.day)
             return parsed.astimezone(timezone.utc)
         return parsed.astimezone(timezone.utc)
     except (ValueError, OverflowError):

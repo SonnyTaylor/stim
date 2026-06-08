@@ -106,12 +106,14 @@ def get_doses(days: Optional[int] = None) -> list[DoseEvent]:
 
 
 def get_today_doses() -> list[dict]:
-    """Get raw dose rows for today (including off-day markers)."""
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    """Get raw dose rows for today (including off-day markers). Uses local time boundary."""
+    local_now = datetime.now().astimezone()
+    today_start_local = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_utc = today_start_local.astimezone(timezone.utc)
     with get_connection() as conn:
         return conn.execute(
             "SELECT id, amount_mg, taken_at, note, is_off_day, fed FROM doses WHERE taken_at >= ? ORDER BY taken_at",
-            (today_start.strftime("%Y-%m-%dT%H:%M:%SZ"),),
+            (today_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),),
         ).fetchall()
 
 
@@ -351,17 +353,89 @@ def today() -> None:
 HISTORY_HELP = """[bold]View dose history.[/bold]
 
 [bold cyan]Examples:[/bold cyan]
-  stim history                  All doses
+  stim history                  All doses (table)
   stim history --days 14        Last 14 days only
-  stim history --days 7         Last week
+  stim history --graph          Dose amount chart over time
+  stim history --days 30 --graph  Last 30 days as chart
 """
 
 
 @app.command(help=HISTORY_HELP)
 def history(
     days: Optional[int] = typer.Option(None, "--days", "-d", help="Limit to last N days."),
+    graph: bool = typer.Option(False, "--graph", "-g", help="Show dose chart over time."),
 ) -> None:
     """Show dose history table."""
+    with get_connection() as conn:
+        if days:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            rows = conn.execute(
+                "SELECT id, amount_mg, taken_at, note, is_off_day, fed FROM doses WHERE taken_at >= ? ORDER BY taken_at",
+                (cutoff,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, amount_mg, taken_at, note, is_off_day, fed FROM doses ORDER BY taken_at"
+            ).fetchall()
+
+    if not rows:
+        console.print("[dim]No doses recorded.[/dim]")
+        return
+
+    if graph:
+        # Build dose data for charting
+        dates = []
+        amounts = []
+        for r in rows:
+            if r["is_off_day"]:
+                continue
+            local_dt = datetime.fromisoformat(r["taken_at"].replace("Z", "+00:00")).astimezone()
+            dates.append(local_dt.strftime("%Y-%m-%d"))
+            amounts.append(r["amount_mg"])
+
+        if not dates:
+            console.print("[dim]No doses to chart.[/dim]")
+            return
+
+        # Group by date and sum amounts per day
+        daily_totals: dict[str, float] = {}
+        for d, a in zip(dates, amounts):
+            daily_totals[d] = daily_totals.get(d, 0) + a
+
+        # Sort by date
+        sorted_dates = sorted(daily_totals.keys())
+        sorted_amounts = [daily_totals[d] for d in sorted_dates]
+
+        # Fill in missing days
+        if len(sorted_dates) > 1:
+            start = datetime.strptime(sorted_dates[0], "%Y-%m-%d").date()
+            end = datetime.strptime(sorted_dates[-1], "%Y-%m-%d").date()
+            all_dates = []
+            all_amounts = []
+            current = start
+            while current <= end:
+                ds = current.strftime("%Y-%m-%d")
+                all_dates.append(ds)
+                all_amounts.append(daily_totals.get(ds, 0))
+                current += timedelta(days=1)
+            sorted_dates = all_dates
+            sorted_amounts = all_amounts
+
+        import plotext as plt
+        plt.clear_figure()
+        plt.theme("pro")
+        plt.plot_size(80, 15)
+        plt.title("Dose History (mg per day)")
+        plt.xlabel("Date")
+        plt.ylabel("mg")
+
+        short_dates = [d[-5:] for d in sorted_dates]
+        plt.bar(short_dates, sorted_amounts, color="green")
+        plt.show()
+        return
+
+    # Table view (original)
+    # Re-fetch in descending order for table display
     with get_connection() as conn:
         if days:
             cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -373,10 +447,6 @@ def history(
             rows = conn.execute(
                 "SELECT id, amount_mg, taken_at, note, is_off_day, fed FROM doses ORDER BY taken_at DESC"
             ).fetchall()
-
-    if not rows:
-        console.print("[dim]No doses recorded.[/dim]")
-        return
 
     table = Table(title="Dose History", box=box.ROUNDED)
     table.add_column("#", style="dim", justify="right")

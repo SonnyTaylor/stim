@@ -336,7 +336,7 @@ def today() -> None:
 
     level = current_level(doses, cfg, streak=streak)
     style = color_for_level(level, cfg)
-    bar = level_bar(level)
+    bar = level_bar(level, width=20)
     lines.append("")
     lines.append(f"Blood level: [{style}]{bar} {level:.1f}%[/{style}] of peak")
     lines.append(f"Streak: {streak_display(streak, cfg)}")
@@ -506,12 +506,14 @@ def status() -> None:
 
     lines.append(f"Streak: {streak_display(streak, cfg)}")
     lines.append("")
-    lines.append(f"This week:  [cyan]{this_week['cnt']}[/cyan] doses, [cyan]{this_week['total']:.0f}mg[/cyan] total")
-    lines.append(f"Last week:  [dim]{last_week['cnt']} doses, {last_week['total']:.0f}mg total[/dim]")
+    tw_dose = "dose" if this_week['cnt'] == 1 else "doses"
+    lw_dose = "dose" if last_week['cnt'] == 1 else "doses"
+    lines.append(f"This week:  [cyan]{this_week['cnt']}[/cyan] {tw_dose}, [cyan]{this_week['total']:.0f}mg[/cyan] total")
+    lines.append(f"Last week:  [dim]{last_week['cnt']} {lw_dose}, {last_week['total']:.0f}mg total[/dim]")
     lines.append("")
 
     level_style = color_for_level(level, cfg)
-    bar = level_bar(level)
+    bar = level_bar(level, width=20)
     lines.append(f"Blood level: [{level_style}]{bar} {level:.1f}%[/{level_style}] of peak")
 
     if streak >= 4:
@@ -707,7 +709,7 @@ def blood(
         console.print()
 
     style = color_for_level(level, cfg)
-    bar = level_bar(level, width=30)
+    bar = level_bar(level, width=20)
 
     now = datetime.now(timezone.utc)
     spark_vals = []
@@ -773,13 +775,17 @@ CALC_HELP = """[bold]Pharmacokinetic calculators.[/bold]
 @app.command(name="calc", help=CALC_HELP)
 def calc_sleep(
     mode: str = typer.Argument(..., help="Calculator mode: sleep, dose, clear, stack."),
-    target: str = typer.Argument(..., help="Target time or dose amount."),
+    target: Optional[str] = typer.Argument(None, help="Target time or dose amount."),
     extra: Optional[str] = typer.Argument(None, help="Additional parameter."),
 ) -> None:
     """Run pharmacokinetic calculators."""
     now = datetime.now(timezone.utc)
     local_now = datetime.now().astimezone()
     streak = compute_streak()
+
+    if mode in ("sleep", "dose", "stack") and target is None:
+        console.print(f"[red]'{mode}' mode requires a target argument.[/red]")
+        raise typer.Exit(1)
 
     if mode == "sleep":
         parts = target.split(":")
@@ -836,18 +842,23 @@ def calc_sleep(
         console.print(f"    Level at sleep: [{style}]{level_at_sleep:.1f}%[/{style}] of peak")
 
         if level_at_sleep > cfg.sleep_threshold * 100:
-            threshold = cfg.sleep_threshold
-            hours_needed = 0
-            for h in range(0, 24):
-                if relative_concentration_at(h, cfg.default_dose_mg, cfg) / 100 < threshold:
-                    hours_needed = h
+            # Find how many hours after dosing the level drops below threshold.
+            # Start from tmax (the dose hasn't taken effect before that).
+            threshold_pct = cfg.sleep_threshold * 100
+            hours_after_dose = None
+            for h in range(int(cfg.tmax_hours), 25):
+                if relative_concentration_at(h, cfg.default_dose_mg, cfg) < threshold_pct:
+                    hours_after_dose = h
                     break
 
-            latest_safe = sleep_time - timedelta(hours=hours_needed)
-            if latest_safe < wake_time:
+            if hours_after_dose is None:
                 console.print(f"  [yellow]⚠ Even dosing at wake time may affect sleep.[/yellow]")
             else:
-                console.print(f"  [green]✓ Latest safe dose time: {latest_safe.strftime('%H:%M')}[/green]")
+                latest_safe = sleep_time - timedelta(hours=hours_after_dose)
+                if latest_safe < wake_time:
+                    console.print(f"  [yellow]⚠ Even dosing at wake time may affect sleep.[/yellow]")
+                else:
+                    console.print(f"  [green]✓ Latest safe dose time: {latest_safe.strftime('%H:%M')}[/green]")
         else:
             console.print(f"  [green]✓ Dosing at wake time should be fine.[/green]")
 
@@ -887,14 +898,12 @@ def calc_sleep(
         console.print()
 
         current_combined = current_level(doses, cfg, streak=streak)
-        new_combined = combined_concentration_at(0, hypothetical, cfg, now, streak=streak)
 
         console.print(f"  Current level:       {current_combined:.1f}% of peak")
-        console.print(f"  After stack (now):   {new_combined:.1f}% of peak")
 
         peak_level = 0
         peak_time = 0
-        for h in range(0, 24):
+        for h in range(1, 25):
             lvl = combined_concentration_at(h, hypothetical, cfg, now, streak=streak)
             if lvl > peak_level:
                 peak_level = lvl
